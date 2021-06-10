@@ -436,24 +436,12 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 
-	o := jobOptions{
-		ctx:    r.Ctx,
-		l:      l.WithValues("job", nameFor(r.job)),
-		c:      r.Client,
-		job:    r.job,
-		owner:  r.Instance,
-		scheme: r.Scheme,
-		paused: r.Instance.Spec.Paused,
-		saName: r.serviceAccount.Name,
-	}
-
-	destPath := *r.Instance.Spec.Rclone.RcloneDestPath
-	direction := "source"
-	configSection := *r.Instance.Spec.Rclone.RcloneConfigSection
-	dataPVCName := r.PVC.Name
-	rcloneSecretName := r.rcloneConfigSecret.Name
-
-	cont, err := o.reconcileRcloneJob(dataPVCName, rcloneSecretName, destPath, direction, configSection)
+	jr := NewJobReconciler(l.WithValues("job", nameFor(r.job)), r.Scheme, r.Instance, r.job)
+	jr.SetPause(r.Instance.Spec.Paused)
+	jr.SetServiceAccount(r.serviceAccount.Name)
+	jr.ConfigureRclone(true, r.PVC.Name, *r.Instance.Spec.Rclone.RcloneDestPath,
+		*r.Instance.Spec.Rclone.RcloneConfigSection, r.rcloneConfigSecret.Name)
+	cont, err := jr.Reconcile(r.Ctx, r.Client)
 
 	// Only continue reconciling if reconcile says it's ok AND the job has succeeded
 	// (sync finished).
@@ -711,36 +699,18 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 
-	o := jobOptions{
-		ctx:    r.Ctx,
-		l:      l.WithValues("job", nameFor(r.job)),
-		c:      r.Client,
-		job:    r.job,
-		owner:  r.Instance,
-		scheme: r.Scheme,
-		paused: r.Instance.Spec.Paused,
-		saName: r.serviceAccount.Name,
-	}
-
-	labels := r.serviceSelector()
-	env := []corev1.EnvVar{}
+	jr := NewJobReconciler(l.WithValues("job", nameFor(r.job)), r.Scheme, r.Instance, r.job)
+	jr.SetPause(r.Instance.Spec.Paused)
+	jr.SetServiceAccount(r.serviceAccount.Name)
+	jr.ConfigureRsync(r.serviceSelector(), true, r.PVC.Name, r.srcSecret.Name)
+	// XXX This is ugly. Should probably be a call to an rsync-specific configuration method
 	if r.Instance.Spec.Rsync.Address != nil {
-		env = append(env, corev1.EnvVar{
-			Name:  "DESTINATION_ADDRESS",
-			Value: *r.Instance.Spec.Rsync.Address,
-		})
+		jr.AddEnv("DESTINATION_ADDRESS", *r.Instance.Spec.Rsync.Address)
 	}
 	if r.Instance.Spec.Rsync.Port != nil {
-		env = append(env, corev1.EnvVar{
-			Name:  "DESTINATION_PORT",
-			Value: strconv.Itoa(int(*r.Instance.Spec.Rsync.Port)),
-		})
+		jr.AddEnv("PORT", strconv.Itoa(int(*r.Instance.Spec.Rsync.Port)))
 	}
-	command := []string{"/bin/bash", "-c", "/source.sh"}
-	dataPVCName := r.PVC.Name
-	sshSecretName := r.srcSecret.Name
-
-	cont, err := o.reconcileRsyncJob(labels, env, command, dataPVCName, sshSecretName)
+	cont, err := jr.Reconcile(r.Ctx, r.Client)
 
 	// Only continue reconciling if reconcile says it's ok AND the job has
 	// succeeded (sync finished).

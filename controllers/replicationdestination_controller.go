@@ -664,24 +664,11 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 
-	o := jobOptions{
-		ctx:    r.Ctx,
-		l:      l.WithValues("job", nameFor(r.job)),
-		c:      r.Client,
-		job:    r.job,
-		owner:  r.Instance,
-		scheme: r.Scheme,
-		paused: r.Instance.Spec.Paused,
-		saName: r.serviceAccount.Name,
-	}
-
-	labels := r.serviceSelector()
-	env := []corev1.EnvVar{}
-	command := []string{"/bin/bash", "-c", "/destination.sh"}
-	dataPVCName := r.PVC.Name
-	sshSecretName := r.destSecret.Name
-
-	cont, err := o.reconcileRsyncJob(labels, env, command, dataPVCName, sshSecretName)
+	jr := NewJobReconciler(l.WithValues("job", nameFor(r.job)), r.Scheme, r.Instance, r.job)
+	jr.SetPause(r.Instance.Spec.Paused)
+	jr.SetServiceAccount(r.serviceAccount.Name)
+	jr.ConfigureRsync(r.serviceSelector(), false, r.PVC.Name, r.destSecret.Name)
+	cont, err := jr.Reconcile(r.Ctx, r.Client)
 
 	// Only continue reconciling if reconcile says it's ok AND the job has
 	// succeeded (sync finished).
@@ -692,32 +679,20 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rclone-src-" + r.Instance.Name,
+			Name:      "scribe-rclone-dst-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
 
-	o := jobOptions{
-		ctx:    r.Ctx,
-		l:      l.WithValues("job", nameFor(r.job)),
-		c:      r.Client,
-		job:    r.job,
-		owner:  r.Instance,
-		scheme: r.Scheme,
-		paused: r.Instance.Spec.Paused,
-		saName: r.serviceAccount.Name,
-	}
+	jr := NewJobReconciler(l.WithValues("job", nameFor(r.job)), r.Scheme, r.Instance, r.job)
+	jr.SetPause(r.Instance.Spec.Paused)
+	jr.SetServiceAccount(r.serviceAccount.Name)
+	jr.ConfigureRclone(false, r.PVC.Name, *r.Instance.Spec.Rclone.RcloneDestPath,
+		*r.Instance.Spec.Rclone.RcloneConfigSection, r.rcloneConfigSecret.Name)
+	cont, err := jr.Reconcile(r.Ctx, r.Client)
 
-	destPath := *r.Instance.Spec.Rclone.RcloneDestPath
-	direction := "destination"
-	configSection := *r.Instance.Spec.Rclone.RcloneConfigSection
-	dataPVCName := r.PVC.Name
-	rcloneSecretName := r.rcloneConfigSecret.Name
-
-	cont, err := o.reconcileRcloneJob(dataPVCName, rcloneSecretName, destPath, direction, configSection)
-
-	// Only continue reconciling if cou says it's ok AND the job has succeeded
-	// (sync finished).
+	// Only continue reconciling if reconcile says it's ok AND the job has
+	// succeeded (sync finished).
 	return cont && r.job.Status.Succeeded == 1, err
 }
 

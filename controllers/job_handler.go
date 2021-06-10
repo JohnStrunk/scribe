@@ -42,6 +42,7 @@ type jobOptions struct {
 	saName string
 }
 
+/*
 func (o *jobOptions) reconcileRcloneJob(dataPVCName string,
 	rcloneSecretName string,
 	destPath string,
@@ -87,7 +88,7 @@ func (o *jobOptions) reconcileRcloneJob(dataPVCName string,
 	labels := map[string]string{}
 	return o.reconcileJob(labels, containers, volumes)
 }
-
+*/
 //nolint:funlen
 func (o *jobOptions) reconcileResticJob(dataPVCName string,
 	cachePVCName string,
@@ -180,6 +181,7 @@ func (o *jobOptions) reconcileResticJob(dataPVCName string,
 	return o.reconcileJob(labels, containers, volumes)
 }
 
+/*
 func (o *jobOptions) reconcileRsyncJob(labels map[string]string,
 	envVars []corev1.EnvVar,
 	command []string,
@@ -222,7 +224,7 @@ func (o *jobOptions) reconcileRsyncJob(labels map[string]string,
 
 	return o.reconcileJob(labels, containers, volumes)
 }
-
+*/
 func (o *jobOptions) reconcileJob(labels map[string]string,
 	containers []corev1.Container,
 	volumes []corev1.Volume) (bool, error) {
